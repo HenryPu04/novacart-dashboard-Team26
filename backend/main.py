@@ -149,27 +149,27 @@ def get_summary():
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
     #
-    # results = execute_query(conn, """
-    #     SELECT
-    #         COUNT(DISTINCT order_id)    AS total_orders,
-    #         SUM(amount)                 AS total_revenue,
-    #         COUNT(DISTINCT customer_id) AS unique_customers,
-    #         MIN(order_date)             AS start_date,
-    #         MAX(order_date)             AS end_date
-    #     FROM fact_orders
-    #     WHERE status IN ('delivered', 'shipped')
-    # """)
-    #
-    # row = results[0]
-    # return {
-    #     "total_revenue":     round(row["total_revenue"] or 0, 2),
-    #     "total_orders":      row["total_orders"],
-    #     "unique_customers":  row["unique_customers"],
-    #     "date_range": {"start": row["start_date"], "end": row["end_date"]},
-    # }
+    results = execute_query(conn, """
+        SELECT
+            COUNT(DISTINCT order_id)    AS total_orders,
+            SUM(amount)                 AS total_revenue,
+            COUNT(DISTINCT customer_id) AS unique_customers,
+            MIN(order_date)             AS start_date,
+            MAX(order_date)             AS end_date
+        FROM fact_orders
+        WHERE status IN ('delivered', 'shipped')
+    """)
+    
+    row = results[0]
+    return {
+        "total_revenue":     round(row["total_revenue"] or 0, 2),
+        "total_orders":      row["total_orders"],
+        "unique_customers":  row["unique_customers"],
+        "date_range": {"start": row["start_date"], "end": row["end_date"]},
+    }
     # ─────────────────────────────────────────────────────────────────────────
 
-    raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
+    # raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
 
 
 @app.get("/franchise/orders", tags=["Franchise"])
