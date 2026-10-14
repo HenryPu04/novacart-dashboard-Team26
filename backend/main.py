@@ -48,6 +48,9 @@ PORT              = int(os.getenv("PORT", 8000))
 CLIENT_VALIDATION = os.getenv("CLIENT_VALIDATION", "Dev")
 START_TIME        = time.time()
 
+# SQLite uses "?" placeholders, Snowflake uses "%s" — pick the right one for bound params
+PARAM = "%s" if os.getenv("DATA_BACKEND", "sqlite") == "snowflake" else "?"
+
 # CORS — only needed for local development
 # In SPCS, the NGINX router handles routing so CORS is not required
 if CLIENT_VALIDATION == "Dev":
@@ -198,7 +201,30 @@ def get_orders(start: str = "2022-01-01", end: str = "2022-12-31"):
     conn = get_connection()
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
-    raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
+    results = execute_query(conn, f"""
+        SELECT
+            dd.year                                                            AS year,
+            dd.month                                                           AS month,
+            dd.month_name                                                      AS month_name,
+            COUNT(DISTINCT fo.order_id)                                        AS order_count,
+            SUM(CASE WHEN fo.status IN ('delivered', 'shipped') THEN fo.amount ELSE 0 END) AS revenue
+        FROM fact_orders fo
+        JOIN dim_date dd ON fo.date_key = dd.date_key
+        WHERE fo.order_date BETWEEN {PARAM} AND {PARAM}
+        GROUP BY dd.year, dd.month, dd.month_name
+        ORDER BY dd.year, dd.month
+    """, (start, end))
+
+    return [
+        {
+            "month":       f"{row['year']}-{row['month']:02d}",
+            "month_name":  row["month_name"],
+            "order_count": row["order_count"],
+            "revenue":     round(row["revenue"] or 0, 2),
+        }
+        for row in results
+    ]
+    # ─────────────────────────────────────────────────────────────────────────
 
 
 @app.get("/franchise/products", tags=["Franchise"])
@@ -221,7 +247,32 @@ def get_products(start: str = "2022-01-01", end: str = "2022-12-31"):
     conn = get_connection()
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
-    raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
+    results = execute_query(conn, f"""
+        SELECT
+            dp.product_id                                                      AS product_id,
+            dp.name                                                            AS name,
+            dp.category                                                        AS category,
+            SUM(CASE WHEN fo.status IN ('delivered', 'shipped') THEN fo.quantity ELSE 0 END) AS units_sold,
+            SUM(CASE WHEN fo.status IN ('delivered', 'shipped') THEN fo.amount ELSE 0 END)    AS revenue
+        FROM fact_orders fo
+        JOIN dim_product dp ON fo.product_id = dp.product_id
+        WHERE fo.order_date BETWEEN {PARAM} AND {PARAM}
+        GROUP BY dp.product_id, dp.name, dp.category
+        ORDER BY revenue DESC
+        LIMIT 10
+    """, (start, end))
+
+    return [
+        {
+            "product_id": row["product_id"],
+            "name":       row["name"],
+            "category":   row["category"],
+            "units_sold": row["units_sold"] or 0,
+            "revenue":    round(row["revenue"] or 0, 2),
+        }
+        for row in results
+    ]
+    # ─────────────────────────────────────────────────────────────────────────
 
 
 @app.get("/franchise/customers", tags=["Franchise"])
@@ -245,7 +296,34 @@ def get_customers(start: str = "2022-01-01", end: str = "2022-12-31"):
     conn = get_connection()
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
-    raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
+    results = execute_query(conn, f"""
+        SELECT
+            dc.customer_id                                                     AS customer_id,
+            dc.name                                                            AS name,
+            dc.addr_city                                                       AS city,
+            dc.addr_state                                                      AS state,
+            COUNT(DISTINCT fo.order_id)                                        AS total_orders,
+            SUM(CASE WHEN fo.status IN ('delivered', 'shipped') THEN fo.amount ELSE 0 END) AS total_spent
+        FROM fact_orders fo
+        JOIN dim_customer dc ON fo.customer_id = dc.customer_id AND dc.is_current = 1
+        WHERE fo.order_date BETWEEN {PARAM} AND {PARAM}
+        GROUP BY dc.customer_id, dc.name, dc.addr_city, dc.addr_state
+        ORDER BY total_spent DESC
+        LIMIT 20
+    """, (start, end))
+
+    return [
+        {
+            "customer_id":  row["customer_id"],
+            "name":         row["name"],
+            "city":         row["city"],
+            "state":        row["state"],
+            "total_orders": row["total_orders"],
+            "total_spent":  round(row["total_spent"] or 0, 2),
+        }
+        for row in results
+    ]
+    # ─────────────────────────────────────────────────────────────────────────
 
 
 @app.get("/franchise/cities", tags=["Franchise"])
@@ -268,4 +346,26 @@ def get_cities(start: str = "2022-01-01", end: str = "2022-12-31"):
     conn = get_connection()
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
-    raise HTTPException(status_code=501, detail="Not implemented yet — your turn!")
+    results = execute_query(conn, f"""
+        SELECT
+            dc.addr_city                                                       AS city,
+            dc.addr_state                                                       AS state,
+            COUNT(DISTINCT fo.order_id)                                        AS order_count,
+            SUM(CASE WHEN fo.status IN ('delivered', 'shipped') THEN fo.amount ELSE 0 END) AS revenue
+        FROM fact_orders fo
+        JOIN dim_customer dc ON fo.customer_id = dc.customer_id AND dc.is_current = 1
+        WHERE fo.order_date BETWEEN {PARAM} AND {PARAM}
+        GROUP BY dc.addr_city, dc.addr_state
+        ORDER BY revenue DESC
+    """, (start, end))
+
+    return [
+        {
+            "city":        row["city"],
+            "state":       row["state"],
+            "order_count": row["order_count"],
+            "revenue":     round(row["revenue"] or 0, 2),
+        }
+        for row in results
+    ]
+    # ─────────────────────────────────────────────────────────────────────────
