@@ -13,7 +13,8 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
-import { getProducts } from '../utils/api';
+import { getProducts, getSummary } from '../utils/api';
+import { useTheme } from '../utils/ThemeContext';
 
 // Format currency helper
 function formatCurrency(value) {
@@ -23,20 +24,77 @@ function formatCurrency(value) {
   return `$${value.toFixed(2)}`;
 }
 
+// Local-time YYYY-MM-DD (toISOString() would shift the date to UTC)
+function toDateString(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Default range: the last 7 days of available data, ending on lastDate (YYYY-MM-DD)
+function lastSevenDays(lastDate) {
+  const [y, m, d] = lastDate.slice(0, 10).split('-').map(Number);
+  const end   = new Date(y, m - 1, d);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return { start: toDateString(start), end: toDateString(end) };
+}
+
+// Shorten long product names for the chart axis
+function truncate(text, max = 20) {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+// Exact currency for the table, e.g. $30,578.58
+function formatFullCurrency(value) {
+  return `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Table cell styles — use theme variables so the table follows dark mode
+const thStyle = {
+  textAlign: 'left', padding: '10px 12px',
+  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+  color: 'var(--text-muted)', borderBottom: '2px solid var(--border)',
+};
+const tdStyle = {
+  padding: '10px 12px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)',
+};
+
 export default function ProductsView() {
-  const [startDate, setStartDate] = useState('2022-01-01');
-  const [endDate,   setEndDate]   = useState('2022-12-31');
+  const { dark } = useTheme();
+  const [startDate, setStartDate] = useState('');
+  const [endDate,   setEndDate]   = useState('');
   const [products,  setProducts]  = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadInitialData(); }, []);
 
-  async function loadData() {
+  // Chart colours follow the theme (recharts needs real colour values, not CSS variables)
+  const barColor  = dark ? '#4DB6AC' : '#00897B';
+  const axisColor = dark ? '#90A4AE' : '#455A64';
+  const gridColor = dark ? '#1E3248' : '#E0E6ED';
+
+  // On first load, look up the last date in the data, then load that final week
+  async function loadInitialData() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getProducts(startDate, endDate);
+      const summary = await getSummary();
+      const { start, end } = lastSevenDays(summary.date_range.end);
+      setStartDate(start);
+      setEndDate(end);
+      await loadData(start, end);
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  async function loadData(start = startDate, end = endDate) {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getProducts(start, end);
       setProducts(data);
     } catch (err) {
       setError(err.message);
@@ -55,7 +113,7 @@ export default function ProductsView() {
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
           <label>To</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          <button className="btn-apply" onClick={loadData}>Apply</button>
+          <button className="btn-apply" onClick={() => loadData()}>Apply</button>
         </div>
 
         {error && (
@@ -78,10 +136,34 @@ export default function ProductsView() {
             */}
             <div className="card">
               <div className="section-title" style={{ marginBottom: 16 }}>Top 10 Products by Revenue</div>
-              {/* TODO: add your bar chart here */}
-              <div className="loading" style={{ height: 300 }}>
-                Implement the products bar chart
-              </div>
+              {products.length === 0 ? (
+                <div className="loading" style={{ height: 300 }}>
+                  No data for the selected dates
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={360}>
+                  <BarChart
+                    data={products.map(p => ({ ...p, short_name: truncate(p.name) }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
+                  >
+                    <XAxis type="number" tickFormatter={formatCurrency}
+                           tick={{ fill: axisColor, fontSize: 12 }} stroke={gridColor} />
+                    <YAxis type="category" dataKey="short_name" width={150}
+                           tick={{ fill: axisColor, fontSize: 12 }} stroke={gridColor} />
+                    <Tooltip
+                      formatter={value => [formatFullCurrency(value), 'Revenue']}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload.name}
+                      cursor={{ fill: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }}
+                      contentStyle={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)',
+                        borderRadius: 6, color: 'var(--text-primary)', fontSize: 13,
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill={barColor} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
 
             {/*
@@ -92,10 +174,33 @@ export default function ProductsView() {
             */}
             <div className="card">
               <div className="section-title" style={{ marginBottom: 16 }}>Product Details</div>
-              {/* TODO: add your table here */}
-              <div className="loading" style={{ height: 300 }}>
-                Implement the products table
-              </div>
+              {products.length === 0 ? (
+                <div className="loading" style={{ height: 300 }}>
+                  No data for the selected dates
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Name</th>
+                      <th style={thStyle}>Category</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Units Sold</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p, i) => (
+                      <tr key={p.product_id}
+                          style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
+                        <td style={tdStyle}>{p.name}</td>
+                        <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{p.category}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{p.units_sold.toLocaleString('en-US')}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{formatFullCurrency(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
           </div>
