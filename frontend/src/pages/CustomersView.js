@@ -12,29 +12,70 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
-import { getCustomers } from '../utils/api';
+import { getCustomers, getSummary } from '../utils/api';
 
 function formatCurrency(value) {
   if (!value) return '$0';
   return `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Local-time YYYY-MM-DD (toISOString() would shift the date to UTC)
+function toDateString(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Default range: the last 7 days of available data, ending on lastDate (YYYY-MM-DD)
+function lastSevenDays(lastDate) {
+  const [y, m, d] = lastDate.slice(0, 10).split('-').map(Number);
+  const end   = new Date(y, m - 1, d);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return { start: toDateString(start), end: toDateString(end) };
+}
+
+// Table cell styles — use theme variables so the table follows dark mode
+const thStyle = {
+  textAlign: 'left', padding: '10px 12px', cursor: 'pointer', userSelect: 'none',
+  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+  color: 'var(--text-muted)', borderBottom: '2px solid var(--border)',
+};
+const tdStyle = {
+  padding: '10px 12px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)',
+};
+
 export default function CustomersView() {
-  const [startDate,  setStartDate]  = useState('2022-01-01');
-  const [endDate,    setEndDate]    = useState('2022-12-31');
+  const [startDate,  setStartDate]  = useState('');
+  const [endDate,    setEndDate]    = useState('');
   const [customers,  setCustomers]  = useState([]);
   const [sortBy,     setSortBy]     = useState('total_spent');
   const [sortDir,    setSortDir]    = useState('desc');
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadInitialData(); }, []);
 
-  async function loadData() {
+  // On first load, look up the last date in the data (all-time summary), then load that final week
+  async function loadInitialData() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getCustomers(startDate, endDate);
+      const allTime = await getSummary();
+      const { start, end } = lastSevenDays(allTime.date_range.end);
+      setStartDate(start);
+      setEndDate(end);
+      await loadData(start, end);
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  async function loadData(start = startDate, end = endDate) {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getCustomers(start, end);
       setCustomers(data);
     } catch (err) {
       setError(err.message);
@@ -75,7 +116,7 @@ export default function CustomersView() {
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
           <label>To</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          <button className="btn-apply" onClick={loadData}>Apply</button>
+          <button className="btn-apply" onClick={() => loadData()}>Apply</button>
           <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-muted)' }}>
             {customers.length} customers
           </span>
@@ -95,28 +136,35 @@ export default function CustomersView() {
               Top Customers by Revenue
             </div>
 
-            {/*
-              STEP 1 — Sortable table
-              sorted is: [{ customer_id, name, city, state, total_orders, total_spent }]
-
-              Build a table with these columns:
-                Name | City | State | Orders | Total Spent
-
-              Each column header should be clickable and call handleSort(columnName).
-              Use sortIcon(columnName) to show ↑ or ↓ on the active sort column.
-
-              Hint: use a standard HTML <table> with <thead> and <tbody>.
-              Style alternating rows with different background colors.
-              Format total_spent with formatCurrency().
-            */}
-
-            {/* TODO: add your sortable table here */}
-            <div className="loading" style={{ height: 400 }}>
-              Implement the sortable customers table.
-              Data available in: sorted (array of customer objects)
-              Sorting state: sortBy="{sortBy}", sortDir="{sortDir}"
-              Use handleSort(column) to handle header clicks.
-            </div>
+            {sorted.length === 0 ? (
+              <div className="loading" style={{ height: 400 }}>
+                No data for the selected dates
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle} onClick={() => handleSort('name')}>Name{sortIcon('name')}</th>
+                    <th style={thStyle} onClick={() => handleSort('city')}>City{sortIcon('city')}</th>
+                    <th style={thStyle} onClick={() => handleSort('state')}>State{sortIcon('state')}</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('total_orders')}>Orders{sortIcon('total_orders')}</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }} onClick={() => handleSort('total_spent')}>Total Spent{sortIcon('total_spent')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((c, i) => (
+                    <tr key={c.customer_id}
+                        style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
+                      <td style={tdStyle}>{c.name}</td>
+                      <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.city}</td>
+                      <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.state}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{c.total_orders.toLocaleString('en-US')}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{formatCurrency(c.total_spent)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
 
           </div>
         )}
