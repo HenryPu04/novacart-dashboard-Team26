@@ -4,7 +4,7 @@
 |---|---|
 | **Team** | 26 |
 | **Client** | NovaCart (online retail division of Indigo BioMed) |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Status** | Signed off |
 | **Sign-off deadline** | October 12, 2026 (end of Day 1, before any code is written) |
 | **Prepared by** | App Consultants: Katie Nam, Eyan Jaffery, Harshi Brahmbhatt, Henry Pu |
@@ -64,7 +64,7 @@ These rules apply to every endpoint. They come from the starter repo README and 
 | BR-07 | **Currency.** All orders in the current data are in USD, shown with a `$` prefix. |
 | BR-08 | **Ranking.** "Top N" lists are ordered by revenue (or total spent) descending and limited in SQL (`LIMIT 10` / `LIMIT 20`), not in the frontend. |
 
-**Data facts (verified in `data/novacart_gold.db`):** 30,000 orders, 400 customers, 15 products, 3 product categories (Electronics, Accessories, Storage), 10 cities in 10 states, order dates from 2022-01-01 to 2022-12-31. There is **no** country column and **no** franchise column.
+**Data facts (verified in `data/novacart_gold.db`):** 30,000 orders, 400 customers, 15 products, 3 product categories (Electronics, Accessories, Storage), 10 cities in 10 states, order dates from 2022-01-01 to 2022-12-31. There is **no** franchise column. The current SQLite dataset is US-only and has no country column; the live Snowflake dataset spans multiple countries and will include a country field (see OQ-04, Section 9).
 
 ---
 
@@ -215,7 +215,7 @@ Owner: App Developer. Validation: App Consultant, before the view is marked done
 |---|---|
 | FLT-01 | Each view has a start date input, an end date input and an **Apply** button. |
 | FLT-02 | Clicking **Apply** reloads that view's data for the chosen dates and shows the loading state while it does. |
-| FLT-03 | The default start and end dates are not yet decided (Open Question OQ-01). |
+| FLT-03 | The default start and end dates are the most recent 7 days of available data — **2022-12-25 to 2022-12-31** (client answer to OQ-01, Section 9). All date-range math uses UTC, since account managers are spread across 30+ time zones; the client confirmed UTC/GMT are equally fine for this purpose. |
 
 ### 4.3 View 1 — Orders Overview (`/orders`)
 
@@ -310,13 +310,13 @@ If something fails after deployment, check the service logs: `CALL SYSTEM$GET_SE
 
 | ID | Requirement | Due | Status |
 |---|---|---|---|
-| CON-01 | Requirements document written and signed off by the App Developer before any code is written | End of Day 1 | In progress (this document) |
-| CON-02 | Requirements document lists every API endpoint and frontend view with its acceptance criteria | End of Day 1 | Sections 3 and 4 |
-| CON-03 | Requirements document is version-controlled in the GitHub repository | End of Day 1 | `docs/requirements.md` |
-| CON-04 | Solution Design Document, 1–2 pages | Day 4 | Not started |
-| CON-05 | SDD includes an architecture diagram: frontend, backend, NGINX router, Snowflake (Execution Guide also lists the browser) | Day 2 draft | Not started |
-| CON-06 | SDD explains at least two technology decisions and their trade-offs | Day 4 | Not started |
-| CON-07 | SDD is written for a non-technical audience | Day 4 | Not started |
+| CON-01 | Requirements document written and signed off by the App Developer before any code is written | End of Day 1 | ✅ Done — signed off October 12, 2026 |
+| CON-02 | Requirements document lists every API endpoint and frontend view with its acceptance criteria | End of Day 1 | ✅ Done — Sections 3 and 4 |
+| CON-03 | Requirements document is version-controlled in the GitHub repository | End of Day 1 | ✅ Done — `docs/requirements.md` |
+| CON-04 | Solution Design Document, 1–2 pages | Day 4 | In progress — draft v0.2, SDD at ~80% per Day 3 target |
+| CON-05 | SDD includes an architecture diagram: frontend, backend, NGINX router, Snowflake (Execution Guide also lists the browser) | Day 2 draft | ✅ Done — diagram embedded (`docs/assets/architecture.png`) |
+| CON-06 | SDD explains at least two technology decisions and their trade-offs | Day 4 | ✅ Done — Section 5 covers three |
+| CON-07 | SDD is written for a non-technical audience | Day 4 | ✅ Done — draft written for account managers/stakeholders |
 | CON-08 | Presentation is 10 minutes + 5 minutes Q&A | Day 5 | Not started |
 | CON-09 | Both roles speak: Developer gives the technical demo; Consultant covers business context, architecture decisions and trade-offs | Day 5 | Not started |
 | CON-10 | Presentation includes a live demo of the deployed application | Day 5 | Not started |
@@ -360,7 +360,7 @@ The Lab Guide describes an API and views that the delivered data and starter rep
 | ID | Lab Guide says | This document says | Reason |
 |---|---|---|---|
 | D-01 | Endpoint paths include `{franchise_id}`, e.g. `/franchise/{franchise_id}/summary` | Paths have no `franchise_id`, e.g. `/franchise/summary` | The Gold tables have no franchise column, so `franchise_id` cannot filter any data. The starter repo implements these paths. |
-| D-02 | `/countries` endpoint and "Revenue by country" chart | `/franchise/cities` endpoint and "Revenue by City" chart | There is no country column in the data; only city and state. |
+| D-02 | `/countries` endpoint and "Revenue by country" chart | `/franchise/cities` endpoint and "Revenue by City" chart | The current build is US-only with no country column, so city/state is used and stays the shipped view this week (§1.1 scope is unchanged — no new endpoint is being built). Live Snowflake, expected to connect today or tomorrow, does include a country field, but that only resolves the data constraint; it is not a commitment to add a `/franchise/countries` endpoint or "Revenue by Country" chart this week (see OQ-04). |
 | D-03 | Customers have `first_name`, `last_name`, `country`; Customer List shows name and country | `name` (single field), `city`, `state`; Customer List columns are Name, City, State, Orders, Total Spent | `dim_customer` has a single `name` column and address city/state only. |
 | D-04 | Summary returns `franchise_id` and `active_customers`; products return `product_name` | Summary has no `franchise_id` and uses `unique_customers`; products use `name` and also return `product_id`; orders also return `month_name` | The starter stubs and frontend are already built on these names. |
 | D-05 | Stat cards show totals "for the selected date range" | Stat cards show all-time totals and do not change with the date filter; `/franchise/summary` takes no parameters | Decided by the team to match the starter stub. |
@@ -372,12 +372,17 @@ The Lab Guide describes an API and views that the delivered data and starter rep
 
 ## 9. Open Questions for the Client (Facilitator)
 
-| ID | Question | Why it matters |
-|---|---|---|
-| OQ-01 | What date range should the filters default to? (Data covers 2022-01-01 to 2022-12-31.) | Execution Guide Day 1 question. Until answered, the starter code's placeholder of 2022-01-01 to 2022-12-31 stays in place. |
-| OQ-02 | What does "franchise" mean in this context, and who is the user logging in? | Execution Guide Day 1 question. The data has no franchise concept (D-01, D-06). |
-| OQ-03 | What does a NovaCart account manager need to see first when they open the dashboard? | Execution Guide Day 1 question. The app currently opens on Orders Overview. |
-| OQ-04 | Is it acceptable to show revenue by city and state instead of by country, given the data only holds US city/state addresses? | Confirms deviations D-02 and D-03 with the client. |
+| ID | Question | Why it matters | Client answer (Oct 14, 2026 call) |
+|---|---|---|---|
+| OQ-01 | What date range should the filters default to? (Data covers 2022-01-01 to 2022-12-31.) | Execution Guide Day 1 question. Until answered, the starter code's placeholder of 2022-01-01 to 2022-12-31 stays in place. | **Answered.** Default to "about a week back" — read as the last 7 days of available data, **2022-12-25 to 2022-12-31** (see FLT-03). Compute date-range boundaries in UTC, since account managers span 30+ time zones; the client said UTC or GMT both work. |
+| OQ-02 | What does "franchise" mean in this context, and who is the user logging in? | Execution Guide Day 1 question. The data has no franchise concept (D-01, D-06). | **Answered.** "Franchise" has no distinct business meaning for NovaCart — it just refers to whichever user is signed in. Confirms deviations D-01 and D-06; no franchise-level scoping or filtering is needed, and the team should drop "franchise" framing in client-facing conversation going forward (the endpoint paths themselves are unaffected). |
+| OQ-03 | What does a NovaCart account manager need to see first when they open the dashboard? | Execution Guide Day 1 question. The app currently opens on Orders Overview. | **Answered.** Client asked us for a recommendation; we suggested revenue-focused charts. Confirms **Orders Overview** (stat cards + monthly revenue + revenue by city, Section 4.3) as the correct default/first view. |
+| OQ-04 | Is it acceptable to show revenue by city and state instead of by country, given the data only holds US city/state addresses? | Confirms deviations D-02 and D-03 with the client. | **Resolved for this build (Oct 14, 2026).** City/state is used and stays the shipped view this week — §1.1 scope is unchanged, no new endpoint or chart is being built. Live Snowflake, expected to connect today or tomorrow, does include a country field, so the underlying data limitation is temporary — but that is a data-availability note only, not a scope change. Tracked in D-02 (Section 8). |
+
+**Additional client input (October 14, 2026 call), not previously tracked as open questions:**
+
+- **Snowflake access/credentials.** The client confirmed IBM — likely the facilitator — is responsible for setting up Snowflake connection access, consistent with the Facilitator role already defined in Section 1.2. The team does not need to source or manage Snowflake credentials itself.
+- **Future support for the application.** Asked about ongoing support once this engagement ends, the client confirmed an AI chatbot is an acceptable direction to explore. Logged as a candidate next step (see `docs/sdd.md` Section 7, Recommended Next Steps).
 
 ---
 
@@ -408,3 +413,4 @@ By entering their name below, all parties confirm that:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | October 12, 2026 | Initial version for developer sign-off |
+| 1.1 | October 14, 2026 | Logged client answers from the Oct 14 call for OQ-01, OQ-02 and OQ-03 (Section 9) and the matching default-date-range decision (FLT-03). Resolved OQ-04 for this build — city/state stays the shipped view; live Snowflake (expected today or tomorrow) will include a country field, but that's a data-availability note, not a commitment to add a countries endpoint this week. Updated data facts note and D-02 deviation accordingly. Added client input on Snowflake access ownership and future AI chatbot support. Marked CON-01 to CON-07 done/in-progress to match actual state, and fixed the `docs/sdd.md` Section 8→7 cross-reference after `sdd.md` was restructured. |

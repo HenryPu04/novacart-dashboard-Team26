@@ -10,8 +10,8 @@
 
 | | |
 |---|---|
-| **Version** | 0.1 (draft) |
-| **Date** | October 2026 |
+| **Version** | 0.2 (draft) |
+| **Date** | October 14, 2026 |
 | **Prepared by** | Team 26 App Consultants: Katie Nam, Eyan Jaffery, Harshi Brahmbhatt, Henry Pu |
 | **Audience** | NovaCart account managers and business stakeholders |
 
@@ -37,47 +37,20 @@ A web dashboard with three views:
 
 Every view has a start and end date filter. The dashboard also has a dark mode and a status light that shows whether the service is running.
 
-**Out of scope:** changing any data (the dashboard is read-only), forecasting, and user-specific permissions. These appear under next steps.
+**Out of scope:** changing any data (the dashboard is read-only), forecasting, and user-specific permissions.
 
 ## 3. How It Works
 
 *Every component runs inside Snowflake. The manager's browser is the only thing outside it.*
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans, Arial, sans-serif','primaryColor':'#BBDEFB','primaryTextColor':'#051B3F','primaryBorderColor':'#1C4EF5','lineColor':'#051B3F','clusterBkg':'#F5FAFF','clusterBorder':'#1C4EF5'}}}%%
-flowchart LR
-    U["<b>Account Manager</b><br/>Web browser"]
-
-    subgraph SF["Snowflake: the data never leaves this boundary"]
-        direction LR
-        subgraph APP["Snowpark Container Services: runs the application"]
-            direction LR
-            R["<b>Router</b> (NGINX)<br/>Sends each request<br/>to the right place"]
-            F["<b>Screens</b> (React)<br/>Orders, Products,<br/>Customers"]
-            B["<b>Data service</b> (FastAPI)<br/>Applies business rules<br/>and asks for the data"]
-        end
-        D[("<b>Gold data tables</b><br/>Orders, Customers,<br/>Products, Dates")]
-    end
-
-    U -->|"1. Opens page<br/>(Snowflake sign-in)"| R
-    R -->|"2. Page and charts"| F
-    R -->|"3. Data requests"| B
-    B -->|"4. Reads data<br/>(secure token)"| D
-
-    classDef user fill:#051B3F,stroke:#051B3F,color:#FFFFFF
-    classDef svc fill:#BBDEFB,stroke:#1C4EF5,color:#051B3F
-    classDef data fill:#C8F5F5,stroke:#00BFA5,color:#051B3F
-    class U user
-    class R,F,B svc
-    class D data
-```
+![Architecture diagram: Account Manager browser connects to the Router (NGINX) inside Snowpark Container Services, which serves the React Screens and routes data requests to the FastAPI Data service, which reads the Gold data tables inside Snowflake](assets/architecture.png)
 
 **In plain words:**
 
-1. The manager opens the dashboard and signs in with their Snowflake account.
-2. The router delivers the screens.
-3. When the manager picks dates, the screens ask the data service for the numbers.
-4. The data service reads the order data from Snowflake, applies the agreed business rules, and sends back the results to be drawn as charts and tables.
+1. The manager opens the dashboard in their browser and signs in with their Snowflake account.
+2. The router delivers the React screens to the browser.
+3. When the manager picks a date range and clicks Apply, the screens ask the data service for the numbers, through the router.
+4. The data service reads the Gold data tables using a secure token, applies the agreed business rules, and sends back the results to be drawn as charts and tables.
 
 ## 4. Numbers Managers Can Trust
 
@@ -86,7 +59,7 @@ The data service applies the same rules on every screen:
 - **Revenue** counts only orders that are **delivered or shipped**. Pending, cancelled and returned orders are left out.
 - **Customer details** (name, city, state) always use the customer's **current** record.
 - **All amounts** are in US dollars.
-- **Data coverage:** about 30,000 orders from 400 customers across 15 products, dated 1 January to 31 December 2022.
+- **Data coverage:** about 30,000 orders from 400 customers across 15 products, dated 1 January to 31 December 2022 (current sample dataset, US-only). The live Snowflake dataset spans multiple countries.
 
 ## 5. Key Technology Decisions and Trade-offs
 
@@ -103,29 +76,15 @@ The data service applies the same rules on every screen:
 - Passwords and keys are **never stored in the code**. They are supplied securely at run time.
 - Error messages shown to users are **generic**. Technical details stay in internal logs.
 
-## 7. Assumptions, Risks and Open Questions
+## 7. Recommended Next Steps for NovaCart
 
-| Item | Detail |
-|---|---|
-| **Assumption** | The data is a static 2022 snapshot, so "latest" means the end of 2022. |
-| **Assumption** | Data is shown by **US city and state** because it holds no country field. |
-| **Risk** | Services in Snowflake are created by the NovaCart facilitator, so any delay there affects the deployment date. |
-| **Open question** | What date range should the dashboard open on? |
-| **Open question** | What does "franchise" mean for NovaCart, and who will sign in? |
-| **Open question** | What should a manager see first when they open the dashboard? |
-| **Open question** | Is city and state an acceptable replacement for country? |
-
-## 8. Recommended Next Steps for NovaCart
-
-1. **Connect live data** so the dashboard shows current orders instead of a 2022 snapshot.
-2. **Add roles** so each account manager sees only their own accounts.
-3. **Add customer detail pages** showing a single customer's order history.
-4. **Export to Excel or CSV** to bridge the move away from the weekly spreadsheet.
+1. **Export to Excel or CSV** to bridge the move away from the weekly spreadsheet.
+2. **Explore an AI chatbot** for self-service questions and ongoing support — the client confirmed this is an acceptable direction.
 
 ---
 
 <div align="center">
 
-<sub>Prepared for Indigo BioMed · NovaCart Account Dashboard · Team 26 · Draft v0.1</sub>
+<sub>Prepared for Indigo BioMed · NovaCart Account Dashboard · Team 26 · Draft v0.2</sub>
 
 </div>
