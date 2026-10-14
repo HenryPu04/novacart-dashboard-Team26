@@ -18,26 +18,94 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import Navbar from '../components/Navbar';
 import { getSummary, getOrders, getCities } from '../utils/api';
+import { useTheme } from '../utils/ThemeContext';
+
+// Short currency for chart axes, e.g. $31K
+function formatCurrency(value) {
+  if (!value) return '$0';
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000)    return `$${(value / 1000).toFixed(0)}K`;
+  return `$${value.toFixed(2)}`;
+}
+
+// Exact currency for stat cards and tooltips, e.g. $1,284,750.00
+function formatFullCurrency(value) {
+  return `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Local-time YYYY-MM-DD (toISOString() would shift the date to UTC)
+function toDateString(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Default range: the last 7 days of available data, ending on lastDate (YYYY-MM-DD)
+function lastSevenDays(lastDate) {
+  const [y, m, d] = lastDate.slice(0, 10).split('-').map(Number);
+  const end   = new Date(y, m - 1, d);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return { start: toDateString(start), end: toDateString(end) };
+}
+
+function EmptyState({ height }) {
+  return <div className="loading" style={{ height }}>No data for the selected dates</div>;
+}
 
 export default function OrdersView() {
-  const [startDate, setStartDate] = useState('2022-01-01');
-  const [endDate,   setEndDate]   = useState('2022-12-31');
+  const { dark } = useTheme();
+  const [startDate, setStartDate] = useState('');
+  const [endDate,   setEndDate]   = useState('');
   const [summary,   setSummary]   = useState(null);
   const [orders,    setOrders]    = useState([]);
   const [cities,    setCities]    = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadInitialData(); }, []);
 
-  async function loadData() {
+  // Chart colours follow the theme (recharts needs real colour values, not CSS variables)
+  const barColor  = dark ? '#4DB6AC' : '#00897B';
+  const axisColor = dark ? '#90A4AE' : '#455A64';
+  const gridColor = dark ? '#1E3248' : '#E0E6ED';
+  const axisProps = { tick: { fill: axisColor, fontSize: 12 }, stroke: gridColor };
+  const tooltipProps = {
+    formatter: value => [formatFullCurrency(value), 'Revenue'],
+    cursor: { fill: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+    contentStyle: {
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 6, color: 'var(--text-primary)', fontSize: 13,
+    },
+  };
+
+  // Chart data: short month labels, and "City, ST" labels for the top 10 cities
+  const monthlyData = orders.map(o => ({ ...o, label: o.month_name.slice(0, 3) }));
+  const cityData    = cities.slice(0, 10).map(c => ({ ...c, label: `${c.city}, ${c.state}` }));
+
+  // On first load, look up the last date in the data (all-time summary), then load that final week
+  async function loadInitialData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const allTime = await getSummary();
+      const { start, end } = lastSevenDays(allTime.date_range.end);
+      setStartDate(start);
+      setEndDate(end);
+      await loadData(start, end);
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  async function loadData(start = startDate, end = endDate) {
     setLoading(true);
     setError(null);
     try {
       const [s, o, c] = await Promise.all([
-        getSummary(),
-        getOrders(startDate, endDate),
-        getCities(startDate, endDate),
+        getSummary(start, end),
+        getOrders(start, end),
+        getCities(start, end),
       ]);
       setSummary(s);
       setOrders(o);
@@ -60,7 +128,7 @@ export default function OrdersView() {
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
           <label>To</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          <button className="btn-apply" onClick={loadData}>Apply</button>
+          <button className="btn-apply" onClick={() => loadData()}>Apply</button>
         </div>
 
         {/* ── Error state ────────────────────────────────────────────────── */}
@@ -73,57 +141,61 @@ export default function OrdersView() {
         {/* ── Loading state ──────────────────────────────────────────────── */}
         {loading && <div className="loading">Loading orders data…</div>}
 
-        {/* ── TODO: Build the UI here ────────────────────────────────────── */}
+        {/* ── Page content ───────────────────────────────────────────────── */}
         {!loading && !error && (
           <>
-            {/*
-              STEP 1 — Stat cards
-              Show total_revenue, total_orders, unique_customers from summary.
-              Hint: use the .stat-row and .stat-box CSS classes.
-              Available data: summary.total_revenue, summary.total_orders, summary.unique_customers
-            */}
+            {/* Stat cards — /franchise/summary for the selected range */}
             <div className="stat-row">
               <div className="stat-box">
                 <div className="label">Total Revenue</div>
-                <div className="value">TODO</div>
+                <div className="value">{formatFullCurrency(summary.total_revenue)}</div>
               </div>
               <div className="stat-box">
                 <div className="label">Total Orders</div>
-                <div className="value">TODO</div>
+                <div className="value">{summary.total_orders.toLocaleString('en-US')}</div>
               </div>
               <div className="stat-box">
                 <div className="label">Unique Customers</div>
-                <div className="value">TODO</div>
+                <div className="value">{summary.unique_customers.toLocaleString('en-US')}</div>
               </div>
             </div>
 
-            {/*
-              STEP 2 — Monthly revenue chart
-              orders is an array of: { month, month_name, order_count, revenue }
-              Use a BarChart or LineChart from recharts.
-              Hint: XAxis dataKey="month_name", Bar dataKey="revenue"
-            */}
+            {/* Monthly revenue — /franchise/orders for the selected range */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="section-title" style={{ marginBottom: 16 }}>Monthly Revenue</div>
-              {/* TODO: add your chart here */}
-              <div className="loading" style={{ height: 200 }}>
-                Implement the monthly revenue chart using recharts BarChart
-              </div>
+              {monthlyData.length === 0 ? <EmptyState height={280} /> : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={monthlyData} margin={{ top: 8, right: 16, bottom: 0, left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                    <XAxis dataKey="label" {...axisProps} />
+                    <YAxis tickFormatter={formatCurrency} width={64} {...axisProps} />
+                    <Tooltip
+                      {...tooltipProps}
+                      labelFormatter={(_, payload) => {
+                        const row = payload?.[0]?.payload;
+                        return row ? `${row.month_name} ${row.month.slice(0, 4)}` : '';
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill={barColor} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
 
-            {/*
-              STEP 3 — Revenue by city chart
-              cities is an array of: { city, state, order_count, revenue }
-              Use a horizontal BarChart (layout="vertical").
-              Show top 10 cities only.
-              Hint: .slice(0, 10) on cities array
-            */}
+            {/* Revenue by city — top 10 from /franchise/cities (requirements D-02) */}
             <div className="card">
               <div className="section-title" style={{ marginBottom: 16 }}>Revenue by City</div>
-              {/* TODO: add your chart here */}
-              <div className="loading" style={{ height: 200 }}>
-                Implement the cities chart using recharts BarChart with layout="vertical"
-              </div>
+              {cityData.length === 0 ? <EmptyState height={360} /> : (
+                <ResponsiveContainer width="100%" height={360}>
+                  <BarChart data={cityData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+                    <XAxis type="number" tickFormatter={formatCurrency} {...axisProps} />
+                    <YAxis type="category" dataKey="label" width={150} {...axisProps} />
+                    <Tooltip {...tooltipProps} />
+                    <Bar dataKey="revenue" fill={barColor} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </>
         )}

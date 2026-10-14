@@ -24,6 +24,7 @@ The connection and query helpers are already set up in connection.py.
 
 import os
 import time
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -126,13 +127,18 @@ def authorize(request: Request):
 # ── Franchise endpoints ───────────────────────────────────────────────────────
 
 @app.get("/franchise/summary", tags=["Franchise"])
-def get_summary():
+def get_summary(start: Optional[str] = None, end: Optional[str] = None):
     """
-    Returns an overview of all orders in the database:
+    Returns an overview of orders, optionally limited to a date range.
+    Without start/end it covers all orders in the database:
     - Total revenue (delivered + shipped orders only)
     - Total orders
     - Number of unique customers
-    - Date range of available data
+    - Date range of available data (within the range, if one is given)
+
+    Query parameters (optional):
+      start: start date (YYYY-MM-DD)
+      end:   end date (YYYY-MM-DD)
 
     Expected response:
     {
@@ -151,8 +157,15 @@ def get_summary():
     conn = get_connection()
 
     # ── YOUR CODE HERE ────────────────────────────────────────────────────────
-    #
-    results = execute_query(conn, """
+    date_filter, params = "", []
+    if start:
+        date_filter += f" AND order_date >= {PARAM}"
+        params.append(start)
+    if end:
+        date_filter += f" AND order_date <= {PARAM}"
+        params.append(end)
+
+    results = execute_query(conn, f"""
         SELECT
             COUNT(DISTINCT order_id)    AS total_orders,
             SUM(amount)                 AS total_revenue,
@@ -160,9 +173,9 @@ def get_summary():
             MIN(order_date)             AS start_date,
             MAX(order_date)             AS end_date
         FROM fact_orders
-        WHERE status IN ('delivered', 'shipped')
-    """)
-    
+        WHERE status IN ('delivered', 'shipped'){date_filter}
+    """, tuple(params))
+
     row = results[0]
     return {
         "total_revenue":     round(row["total_revenue"] or 0, 2),
