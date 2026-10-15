@@ -25,7 +25,7 @@ The connection and query helpers are already set up in connection.py.
 import os
 import time
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -289,9 +289,14 @@ def get_products(start: str = "2022-01-01", end: str = "2022-12-31"):
 
 
 @app.get("/franchise/customers", tags=["Franchise"])
-def get_customers(start: str = "2022-01-01", end: str = "2022-12-31"):
+def get_customers(
+    start: str = "2022-01-01",
+    end:   str = "2022-12-31",
+    limit: int = Query(20, ge=0, description="Number of top customers to return. 0 returns all customers."),
+):
     """
-    Returns the top 20 customers by revenue for the given date range.
+    Returns the top customers by revenue for the given date range
+    (20 by default; set limit to change it, or 0 for all customers).
 
     Expected response:
     [
@@ -322,7 +327,7 @@ def get_customers(start: str = "2022-01-01", end: str = "2022-12-31"):
         WHERE fo.order_date BETWEEN {PARAM} AND {PARAM}
         GROUP BY dc.customer_id, dc.name, dc.addr_city, dc.addr_state
         ORDER BY total_spent DESC
-        LIMIT 20
+        {f"LIMIT {limit}" if limit else ""}
     """, (start, end))
 
     return [
