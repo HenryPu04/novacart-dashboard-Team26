@@ -4,6 +4,7 @@ import { ThemeProvider } from './utils/ThemeContext';
 import OrdersView   from './pages/OrdersView';
 import ProductsView from './pages/ProductsView';
 import CustomersView from './pages/CustomersView';
+import CustomerDetailView from './pages/CustomerDetailView';
 import './App.css';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/orders"    element={<OrdersView />} />
           <Route path="/products"  element={<ProductsView />} />
           <Route path="/customers" element={<CustomersView />} />
+          <Route path="/customers/:customerId" element={<CustomerDetailView />} />
           <Route path="*"          element={<Navigate to="/orders" replace />} />
         </Routes>
       </BrowserRouter>

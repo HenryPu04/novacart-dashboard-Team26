@@ -19,10 +19,18 @@ async function apiFetch(path) {
 }
 
 export async function authorize()       { return apiFetch('/authorize'); }
-export async function getHealth()       { return apiFetch('/health'); }
+// /health answers 503 with a JSON body when the database is down — return it so the
+// status indicator can show "degraded" rather than treating the backend as unreachable
+export async function getHealth() {
+  const res = await fetch(`${BACKEND_URL}/health`);
+  if (res.ok || res.status === 503) return res.json();
+  throw new Error(`API error ${res.status}`);
+}
 // start/end are optional — omit both for all-time figures
 export async function getSummary(s, e)  { return apiFetch(s && e ? `/franchise/summary?start=${s}&end=${e}` : '/franchise/summary'); }
 export async function getOrders(s, e)   { return apiFetch(`/franchise/orders?start=${s}&end=${e}`); }
 export async function getProducts(s, e) { return apiFetch(`/franchise/products?start=${s}&end=${e}`); }
-export async function getCustomers(s,e) { return apiFetch(`/franchise/customers?start=${s}&end=${e}`); }
+// limit: number of top customers, or 0 for all
+export async function getCustomers(s, e, limit = 20) { return apiFetch(`/franchise/customers?start=${s}&end=${e}&limit=${limit}`); }
 export async function getCities(s, e)   { return apiFetch(`/franchise/cities?start=${s}&end=${e}`); }
+export async function getCustomerHistory(id) { return apiFetch(`/franchise/customers/${encodeURIComponent(id)}/history`); }

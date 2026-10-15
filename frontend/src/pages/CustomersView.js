@@ -2,7 +2,7 @@
  * CustomersView.js — Customer List page
  *
  * This page shows:
- *   - A sortable table of top 20 customers by revenue
+ *   - A sortable table of the top customers by revenue (20 by default; 10/20/50/100/All via dropdown)
  *   - Columns: Name | City | State | Orders | Total Spent
  *   - A date range filter
  *
@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { getCustomers, getSummary } from '../utils/api';
 
@@ -34,6 +35,15 @@ function lastSevenDays(lastDate) {
   return { start: toDateString(start), end: toDateString(end) };
 }
 
+// "How many top customers" dropdown options — 0 means all customers
+const LIMIT_OPTIONS = [
+  { value: 10,  label: '10'  },
+  { value: 20,  label: '20'  },
+  { value: 50,  label: '50'  },
+  { value: 100, label: '100' },
+  { value: 0,   label: 'All' },
+];
+
 // Table cell styles — use theme variables so the table follows dark mode
 const thStyle = {
   textAlign: 'left', padding: '10px 12px', cursor: 'pointer', userSelect: 'none',
@@ -45,9 +55,11 @@ const tdStyle = {
 };
 
 export default function CustomersView() {
+  const navigate = useNavigate();
   const [startDate,  setStartDate]  = useState('');
   const [endDate,    setEndDate]    = useState('');
   const [customers,  setCustomers]  = useState([]);
+  const [limit,      setLimit]      = useState(20);
   const [sortBy,     setSortBy]     = useState('total_spent');
   const [sortDir,    setSortDir]    = useState('desc');
   const [loading,    setLoading]    = useState(true);
@@ -71,17 +83,24 @@ export default function CustomersView() {
     }
   }
 
-  async function loadData(start = startDate, end = endDate) {
+  async function loadData(start = startDate, end = endDate, top = limit) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getCustomers(start, end);
+      const data = await getCustomers(start, end, top);
       setCustomers(data);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Changing the dropdown reloads straight away, using the dates currently applied
+  function handleLimitChange(e) {
+    const top = Number(e.target.value);
+    setLimit(top);
+    loadData(startDate, endDate, top);
   }
 
   // Sort handler — toggles direction if same column, resets to desc if new column
@@ -117,9 +136,6 @@ export default function CustomersView() {
           <label>To</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
           <button className="btn-apply" onClick={() => loadData()}>Apply</button>
-          <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-muted)' }}>
-            {customers.length} customers
-          </span>
         </div>
 
         {error && (
@@ -132,8 +148,19 @@ export default function CustomersView() {
 
         {!loading && !error && (
           <div className="card">
-            <div className="section-title" style={{ marginBottom: 16 }}>
-              Top Customers by Revenue
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+              <div className="section-title">Top Customers by Revenue</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Show
+                <select value={limit} onChange={handleLimitChange}
+                  style={{
+                    background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 6,
+                    padding: '6px 10px', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer',
+                  }}>
+                  {LIMIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                customers
+              </label>
             </div>
 
             {sorted.length === 0 ? (
@@ -154,8 +181,10 @@ export default function CustomersView() {
                 <tbody>
                   {sorted.map((c, i) => (
                     <tr key={c.customer_id}
-                        style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
-                      <td style={tdStyle}>{c.name}</td>
+                        onClick={() => navigate(`/customers/${c.customer_id}`)}
+                        title="View order and address history"
+                        style={{ cursor: 'pointer', background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
+                      <td style={{ ...tdStyle, color: 'var(--accent)', fontWeight: 600 }}>{c.name}</td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.city}</td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.state}</td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>{c.total_orders.toLocaleString('en-US')}</td>

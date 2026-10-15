@@ -31,7 +31,7 @@ export default function Navbar() {
 
       <div style={{ display: 'flex', gap: 8 }}>
         {links.map(({ label, path }) => {
-          const active = location.pathname === path;
+          const active = location.pathname === path || location.pathname.startsWith(`${path}/`);
           return (
             <button key={path} onClick={() => navigate(path)}
               style={{
