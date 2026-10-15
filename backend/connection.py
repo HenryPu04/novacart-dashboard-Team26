@@ -63,6 +63,37 @@ def get_snowflake_connection():
             schema=os.getenv("SNOWFLAKE_SCHEMA"),
             warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         )
+    
+    account = os.getenv("SNOWFLAKE_ACCOUNT")
+
+    # The connector sometimes mis-derives the host from a "<locator>.<region>"
+    # style account identifier (it can land on a dead *.PUBLIC.* load-balancer
+    # hostname instead of the real one). Passing host explicitly sidesteps that.
+    host = os.getenv("SNOWFLAKE_HOST") or f"{account}.snowflakecomputing.com"
+
+    # Local mode — password auth (simplest, no keypair registration needed)
+    password = os.getenv("SNOWFLAKE_PASSWORD")
+    if password:
+        return snowflake.connector.connect(
+            account=account,
+            host=host,
+            user=os.getenv("SNOWFLAKE_USERNAME"),
+            password=password,
+            role=os.getenv("SNOWFLAKE_ROLE"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+            database=os.getenv("SNOWFLAKE_DATABASE"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        )
+
+    # Local mode — keypair authentication (fallback if no password given)
+    from cryptography.hazmat.primitives import serialization
+
+    private_key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    if not private_key_path:
+        raise ValueError(
+            "Either SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY_PATH is required "
+            "for local Snowflake connections. See .env.example for setup instructions."
+        )
 
     # Local mode — keypair authentication
     private_key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
