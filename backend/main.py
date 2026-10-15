@@ -382,3 +382,94 @@ def get_cities(start: str = "2022-01-01", end: str = "2022-12-31"):
         for row in results
     ]
     # ─────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/franchise/customers/{customer_id}/history", tags=["Franchise"])
+def get_customer_history(customer_id: str):
+    """
+    Returns the full order history and address history for one customer (stretch goal OPT-01).
+
+    Address history comes from every dim_customer row for the customer (SCD Type 2),
+    oldest first. Orders include every status, newest first.
+
+    Expected response:
+    {
+        "customer_id": "C077", "name": "Diana Martin", "email": "diana.martin@novacart.com",
+        "signup_date": "2022-02-27", "total_orders": 64, "total_spent": 5120.40,
+        "addresses": [
+            { "street": "66 Main St", "city": "Chicago", "state": "IL", "zip": "60601",
+              "valid_from": "2022-01-01", "valid_to": "2022-06-01", "is_current": false }
+        ],
+        "orders": [
+            { "order_id": "O29871", "order_date": "2022-12-30", "product_name": "Wireless Headphones",
+              "category": "Electronics", "quantity": 1, "amount": 89.99, "status": "delivered" }
+        ]
+    }
+
+    Unknown customer_id returns 404.
+    """
+    conn = get_connection()
+
+    addresses = execute_query(conn, f"""
+        SELECT
+            name, email, signup_date,
+            addr_street AS street, addr_city AS city, addr_state AS state, addr_zip AS zip,
+            valid_from, valid_to, is_current
+        FROM dim_customer
+        WHERE customer_id = {PARAM}
+        ORDER BY valid_from
+    """, (customer_id,))
+
+    if not addresses:
+        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+
+    orders = execute_query(conn, f"""
+        SELECT
+            fo.order_id     AS order_id,
+            fo.order_date   AS order_date,
+            dp.name         AS product_name,
+            dp.category     AS category,
+            fo.quantity     AS quantity,
+            fo.amount       AS amount,
+            fo.status       AS status
+        FROM fact_orders fo
+        LEFT JOIN dim_product dp ON fo.product_id = dp.product_id
+        WHERE fo.customer_id = {PARAM}
+        ORDER BY fo.order_date DESC, fo.order_id DESC
+    """, (customer_id,))
+
+    # Name/email come from the current row (BR-05); fall back to the latest row
+    current = next((a for a in addresses if a["is_current"]), addresses[-1])
+    return {
+        "customer_id":  customer_id,
+        "name":         current["name"],
+        "email":        current["email"],
+        "signup_date":  current["signup_date"],
+        "total_orders": len(orders),
+        "total_spent":  round(sum(float(o["amount"] or 0) for o in orders
+                                  if o["status"] in ("delivered", "shipped")), 2),
+        "addresses": [
+            {
+                "street":     a["street"],
+                "city":       a["city"],
+                "state":      a["state"],
+                "zip":        a["zip"],
+                "valid_from": a["valid_from"],
+                "valid_to":   a["valid_to"],
+                "is_current": bool(a["is_current"]),
+            }
+            for a in addresses
+        ],
+        "orders": [
+            {
+                "order_id":     o["order_id"],
+                "order_date":   o["order_date"],
+                "product_name": o["product_name"],
+                "category":     o["category"],
+                "quantity":     o["quantity"],
+                "amount":       round(float(o["amount"] or 0), 2),
+                "status":       o["status"],
+            }
+            for o in orders
+        ],
+    }

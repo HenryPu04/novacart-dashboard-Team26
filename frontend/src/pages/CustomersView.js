@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { getCustomers, getSummary } from '../utils/api';
 
@@ -45,6 +46,7 @@ const tdStyle = {
 };
 
 export default function CustomersView() {
+  const navigate = useNavigate();
   const [startDate,  setStartDate]  = useState('');
   const [endDate,    setEndDate]    = useState('');
   const [customers,  setCustomers]  = useState([]);
@@ -154,8 +156,10 @@ export default function CustomersView() {
                 <tbody>
                   {sorted.map((c, i) => (
                     <tr key={c.customer_id}
-                        style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
-                      <td style={tdStyle}>{c.name}</td>
+                        onClick={() => navigate(`/customers/${c.customer_id}`)}
+                        title="View order and address history"
+                        style={{ cursor: 'pointer', background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-primary)' }}>
+                      <td style={{ ...tdStyle, color: 'var(--accent)', fontWeight: 600 }}>{c.name}</td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.city}</td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{c.state}</td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>{c.total_orders.toLocaleString('en-US')}</td>
